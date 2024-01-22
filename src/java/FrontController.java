@@ -1,6 +1,7 @@
 package controller;
 
 import map.*;
+import model.export.ExportController;
 import exception.*;
 import utils.*;
 import util.*;
@@ -175,7 +176,13 @@ public class FrontController extends HttpServlet {
             
             Object result = invokeControllerMethod(request, response, mapping, httpMethod);
 
-            UtilController.handleControllerResult(result, request, response, out, mapping, httpMethod);
+            // Vérifier si un export est demandé via ExportController
+            ExportController.exportResponse(result, request, response);
+
+            // Si pas d’export, traiter normalement
+            if (request.getParameter("export") == null) {
+                UtilController.handleControllerResult(result, request, response, out, mapping, httpMethod);
+            }
             
         } catch (Exception e) {
             handleException(response, HttpServletResponse.SC_INTERNAL_SERVER_ERROR, e);

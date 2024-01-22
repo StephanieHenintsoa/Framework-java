@@ -2,7 +2,7 @@
 package guard;
 
 import annotation.Auth;
-import authentication.AuthenticationManager;
+import model.authentification.AuthenticationManager;
 import authentication.AuthenticationConfig;
 import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
