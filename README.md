@@ -1,2 +1,1 @@
-# framework-java
- A Java Framework buil from scratch
+le package du controller doit etre dans web.xml;
