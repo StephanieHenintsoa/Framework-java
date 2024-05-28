@@ -29,7 +29,6 @@ public class FrontController extends HttpServlet {
             this.scanner = new ControllerScanner();
             this.controllers = this.scanner.findControllers(namePackage);
 
-            
             for (Class<?> controllerClass : controllers) {
                 Method[] methods = controllerClass.getDeclaredMethods();
                 for (Method method : methods) {
@@ -41,7 +40,6 @@ public class FrontController extends HttpServlet {
                     }
                 }
             }
-
         } catch (Exception e) {
             e.printStackTrace();
         }
@@ -59,20 +57,40 @@ public class FrontController extends HttpServlet {
         processRequest(request, response);
     }
 
+    private String extractUrl(String fullUrl) {
+        
+        String contextPath = "/framework";
+        if (fullUrl.startsWith(contextPath)) {
+            return fullUrl.substring(contextPath.length());
+        }
+        return fullUrl;
+    }
+
     protected void processRequest(HttpServletRequest request, HttpServletResponse response)
             throws ServletException, IOException {
         try {
             PrintWriter out = response.getWriter();
-            String url = request.getRequestURI();
+            String fullUrl = request.getRequestURI();
+            String url = extractUrl(fullUrl);
 
-            out.println("<h1>" + "Bienvenue " + "</h1>");
-            out.println("<h3>Lien: " + url + " </h3>");
+            out.println("<h1>Bienvenue</h1>");
+            out.println("<h3>Lien: " + url + "</h3>");
 
-
-            Mapping mapping = urlMapping.get("/first");
+            
+            Mapping mapping = urlMapping.get(url);
 
             if (mapping != null) {
                 out.println("<h3>URL: " + url + " - Mapping: " + mapping.getClassName() + "#" + mapping.getMethodName() + "</h3>");
+
+                Class<?> controllerClass = Class.forName(mapping.getClassName());
+
+                Object controllerInstance = controllerClass.getDeclaredConstructor().newInstance();
+                
+                Method method = controllerClass.getMethod(mapping.getMethodName());
+
+                Object result = method.invoke(controllerInstance);
+
+                out.println("<h3>Résultat: " + result + "</h3>");
             } else {
                 out.println("<h3>Aucune méthode associée à ce chemin</h3>");
             }
