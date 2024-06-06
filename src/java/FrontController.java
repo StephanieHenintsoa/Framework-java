@@ -1,6 +1,7 @@
 package controller;
 
 import map.*;
+import utils.*;
 import java.io.IOException;
 import java.io.PrintWriter;
 import java.lang.reflect.Method;
@@ -58,7 +59,6 @@ public class FrontController extends HttpServlet {
     }
 
     private String extractUrl(String fullUrl) {
-        
         String contextPath = "/framework";
         if (fullUrl.startsWith(contextPath)) {
             return fullUrl.substring(contextPath.length());
@@ -67,35 +67,50 @@ public class FrontController extends HttpServlet {
     }
 
     protected void processRequest(HttpServletRequest request, HttpServletResponse response)
-            throws ServletException, IOException {
-        try {
-            PrintWriter out = response.getWriter();
-            String fullUrl = request.getRequestURI();
-            String url = extractUrl(fullUrl);
+        throws ServletException, IOException {
+    try {
+        PrintWriter out = response.getWriter();
+        String fullUrl = request.getRequestURI();
+        String url = extractUrl(fullUrl);
 
-            out.println("<h1>Bienvenue</h1>");
-            out.println("<h3>Lien: " + url + "</h3>");
+        out.println("<h1>Bienvenue</h1>");
+        out.println("<h3>Lien: " + url + "</h3>");
 
-            
-            Mapping mapping = urlMapping.get(url);
+        Mapping mapping = urlMapping.get(url);
 
-            if (mapping != null) {
-                out.println("<h3>URL: " + url + " - Mapping: " + mapping.getClassName() + "#" + mapping.getMethodName() + "</h3>");
+        if (mapping != null) {
+            out.println("<h3>URL: " + url + " - Mapping: " + mapping.getClassName() + "#" + mapping.getMethodName() + "</h3>");
 
-                Class<?> controllerClass = Class.forName(mapping.getClassName());
+            Class<?> controllerClass = Class.forName(mapping.getClassName());
 
-                Object controllerInstance = controllerClass.getDeclaredConstructor().newInstance();
-                
-                Method method = controllerClass.getMethod(mapping.getMethodName());
+            Object controllerInstance = controllerClass.getDeclaredConstructor().newInstance();
 
-                Object result = method.invoke(controllerInstance);
+            Method method = controllerClass.getMethod(mapping.getMethodName());
 
+            Object result = method.invoke(controllerInstance);
+
+            if (result instanceof String) {
                 out.println("<h3>Résultat: " + result + "</h3>");
+            } else if (result instanceof ModelView) {
+                ModelView modelView = (ModelView) result;
+                String viewUrl = modelView.getUrl();
+                HashMap<String, Object> data = modelView.getData();
+
+                for (String key : data.keySet()) {
+                    request.setAttribute(key, data.get(key));
+                }
+
+                RequestDispatcher dispatcher = request.getRequestDispatcher(viewUrl);
+                dispatcher.forward(request, response);
             } else {
-                out.println("<h3>Aucune méthode associée à ce chemin</h3>");
+                out.println("<h3>Type de résultat non reconnu</h3>");
             }
-        } catch (Exception e) {
-            e.printStackTrace();
+        } else {
+            out.println("<h3>Aucune méthode associée à ce chemin</h3>");
         }
+    } catch (Exception e) {
+        e.printStackTrace();
     }
+}
+
 }
