@@ -3,9 +3,11 @@ package controller;
 import map.*;
 import exception.*;
 import utils.*;
+
 import java.io.IOException;
 import java.io.PrintWriter;
 import java.lang.reflect.Method;
+import java.lang.annotation.Annotation;  // Import de l'annotation
 import java.util.HashMap;
 import java.util.List;
 import javax.servlet.ServletException;
@@ -15,7 +17,7 @@ import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
 import javax.servlet.RequestDispatcher;
 import javax.servlet.ServletContext;
-import annotation.Annotation_Get;
+import annotation.*;
 
 public class FrontController extends HttpServlet {
     private String namePackage;
@@ -50,17 +52,20 @@ public class FrontController extends HttpServlet {
         for (Class<?> controllerClass : controllers) {
             Method[] methods = controllerClass.getDeclaredMethods();
             for (Method method : methods) {
-                if (method.isAnnotationPresent(Annotation_Get.class)) {
-                    Annotation_Get annotation = method.getAnnotation(Annotation_Get.class);
-                    String url = annotation.value();
+                if (method.isAnnotationPresent(Annotation_Get.class) || method.isAnnotationPresent(Annotation_Post.class)) {
+                    String url = method.isAnnotationPresent(Annotation_Get.class) ? 
+                        method.getAnnotation(Annotation_Get.class).value() : 
+                        method.getAnnotation(Annotation_Post.class).value();
+
                     if (urlMapping.containsKey(url)) {
                         throw new RequestException("Duplication d'URL détectée pour : " + url);
                     }
-                    // Vérifier le type de retour
+
                     Class<?> returnType = method.getReturnType();
                     if (!returnType.equals(String.class) && !returnType.equals(ModelView.class)) {
                         throw new RequestException("La méthode " + method.getName() + " dans " + controllerClass.getName() + " a un type de retour invalide : " + returnType.getName());
                     }
+                    
                     Mapping mapping = new Mapping(controllerClass.getName(), method.getName());
                     urlMapping.put(url, mapping);
                 }
@@ -89,29 +94,51 @@ public class FrontController extends HttpServlet {
     }
 
     protected void processRequest(HttpServletRequest request, HttpServletResponse response)
-            throws ServletException, IOException {
+        throws ServletException, IOException 
+    {
         try {
             PrintWriter out = response.getWriter();
             String fullUrl = request.getRequestURI();
             String url = extractUrl(fullUrl);
 
-            out.println("<h1>Bienvenue</h1>");
-            out.println("<h3>Lien: " + url + "</h3>");
-
             Mapping mapping = urlMapping.get(url);
 
             if (mapping != null) {
-                out.println("<h3>URL: " + url + " - Mapping: " + mapping.getClassName() + "#" + mapping.getMethodName() + "</h3>");
-
                 Class<?> controllerClass = Class.forName(mapping.getClassName());
-
                 Object controllerInstance = controllerClass.getDeclaredConstructor().newInstance();
+                Method method = null;
+                
+                // Trouver la méthode correspondante avec les paramètres appropriés
+                Method[] methods = controllerClass.getDeclaredMethods();
+                for (Method m : methods) {
+                    if (m.getName().equals(mapping.getMethodName())) {
+                        method = m;
+                        break;
+                    }
+                }
 
-                Method method = controllerClass.getMethod(mapping.getMethodName());
+                if (method == null) {
+                    throw new NoSuchMethodException("Méthode " + mapping.getMethodName() + " non trouvée dans la classe " + controllerClass.getName());
+                }
 
-                Object result = method.invoke(controllerInstance);
+                // Gestion des paramètres de requête
+                Object[] params = new Object[method.getParameterCount()];
+                Annotation[][] paramAnnotations = method.getParameterAnnotations();
+                Class<?>[] paramTypes = method.getParameterTypes();
 
-                // Vérifier le type de retour
+                for (int i = 0; i < paramAnnotations.length; i++) {
+                    for (Annotation annotation : paramAnnotations[i]) {
+                        if (annotation instanceof RequestParam) {
+                            RequestParam requestParam = (RequestParam) annotation;
+                            String paramName = requestParam.name();
+                            String paramValue = request.getParameter(paramName);
+                            params[i] = convertParameter(paramValue, paramTypes[i]);
+                        }
+                    }
+                }
+
+                Object result = method.invoke(controllerInstance, params);
+
                 if (result instanceof String) {
                     out.println("<h3>Résultat: " + result + "</h3>");
                 } else if (result instanceof ModelView) {
@@ -138,5 +165,18 @@ public class FrontController extends HttpServlet {
             e.printStackTrace();
             response.sendError(HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Une erreur interne s'est produite.");
         }
+    }
+
+    // Méthode pour convertir les paramètres de chaîne en types appropriés
+    private Object convertParameter(String value, Class<?> targetType) {
+        if (targetType.equals(String.class)) {
+            return value;
+        } else if (targetType.equals(int.class) || targetType.equals(Integer.class)) {
+            return Integer.parseInt(value);
+        } else if (targetType.equals(boolean.class) || targetType.equals(Boolean.class)) {
+            return Boolean.parseBoolean(value);
+        }
+        // Ajouter plus de conversions si nécessaire
+        return null;
     }
 }
