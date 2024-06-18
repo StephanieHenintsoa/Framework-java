@@ -1,0 +1,7 @@
+*.class
+*.jar
+/temp
+/lib
+/bin
+*.war
+manifest.txt
