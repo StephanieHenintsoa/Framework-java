@@ -1,5 +1,3 @@
-package controller;
-
 import map.*;
 import exception.*;
 import utils.*;
@@ -7,7 +5,7 @@ import utils.*;
 import java.io.IOException;
 import java.io.PrintWriter;
 import java.lang.reflect.Method;
-import java.lang.annotation.Annotation;  // Import de l'annotation
+import java.lang.annotation.Annotation;
 import java.util.HashMap;
 import java.util.List;
 import javax.servlet.ServletException;
@@ -107,18 +105,11 @@ public class FrontController extends HttpServlet {
                 Class<?> controllerClass = Class.forName(mapping.getClassName());
                 Object controllerInstance = controllerClass.getDeclaredConstructor().newInstance();
                 Method method = null;
-                
-                // Trouver la méthode correspondante avec les paramètres appropriés
-                Method[] methods = controllerClass.getDeclaredMethods();
-                for (Method m : methods) {
+                for (Method m : controllerClass.getMethods()) {
                     if (m.getName().equals(mapping.getMethodName())) {
                         method = m;
                         break;
                     }
-                }
-
-                if (method == null) {
-                    throw new NoSuchMethodException("Méthode " + mapping.getMethodName() + " non trouvée dans la classe " + controllerClass.getName());
                 }
 
                 // Gestion des paramètres de requête
@@ -133,6 +124,16 @@ public class FrontController extends HttpServlet {
                             String paramName = requestParam.name();
                             String paramValue = request.getParameter(paramName);
                             params[i] = convertParameter(paramValue, paramTypes[i]);
+                        } else if (annotation instanceof ModelAttribute) {
+                            String paramName = ((ModelAttribute) annotation).value();
+                            Object modelAttribute = paramTypes[i].getDeclaredConstructor().newInstance();
+                            for (java.lang.reflect.Field field : paramTypes[i].getDeclaredFields()) {
+                                String fieldName = field.getName();
+                                String fieldValue = request.getParameter(fieldName);
+                                field.setAccessible(true);
+                                field.set(modelAttribute, convertParameter(fieldValue, field.getType()));
+                            }
+                            params[i] = modelAttribute;
                         }
                     }
                 }
