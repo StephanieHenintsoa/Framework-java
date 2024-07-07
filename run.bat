@@ -9,7 +9,7 @@ set "destinationFolder=%root%\bin"
 set "lib=%root%\lib"
 set "src=%root%"
 
-set "lib_test=E:\S4\Web_dynamique\Framework\test\web\WEB-INF\lib" 
+set "lib_test=E:\S4\Web_dynamique\Test3\web\WEB-INF\lib" 
 
 for /r "%sourceFolder%" %%f in (*.java) do (
     xcopy "%%f" "%root%\temp"
