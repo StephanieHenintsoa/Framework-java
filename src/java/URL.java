@@ -4,5 +4,6 @@ import java.lang.annotation.Retention;
 import java.lang.annotation.RetentionPolicy;
 
 @Retention(RetentionPolicy.RUNTIME)
-public @interface Annotation_Get{
+public @interface URL{
+    String value();
 }

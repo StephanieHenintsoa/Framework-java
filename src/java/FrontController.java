@@ -5,6 +5,8 @@ import exception.*;
 import utils.*;
 import util.*;
 import annotation.*;
+import verb.VerbAction;
+
 import com.google.gson.Gson;
 
 import java.io.IOException;
@@ -14,6 +16,7 @@ import java.sql.Date;
 import java.lang.annotation.Annotation;
 import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.lang.reflect.Field;
 import javax.servlet.ServletException;
 import javax.servlet.ServletConfig;
@@ -43,7 +46,7 @@ public class FrontController extends HttpServlet {
             
             this.scanner = new ControllerScanner();
             this.controllers = this.scanner.findControllers(namePackage);
-            UtilController.validateControllers(controllers,namePackage);
+            UtilController.validateControllers(controllers, namePackage);
             mapControllers();
         } catch (BuildException | RequestException e) {
             throw new ServletException(e.getMessage(), e);
@@ -55,18 +58,33 @@ public class FrontController extends HttpServlet {
     private void mapControllers() throws Exception {
         for (Class<?> controllerClass : controllers) {
             for (Method method : controllerClass.getDeclaredMethods()) {
-                if (method.isAnnotationPresent(Annotation_Get.class) || method.isAnnotationPresent(Annotation_Post.class) || method.isAnnotationPresent(RequestMapping.class)) {
-                    String url = UtilUrl.getUrlFromMethod(method);
-                    UtilUrl.validateUrlMapping(url,urlMapping);
-                    UtilReturnType.validateReturnType(method, controllerClass);
-                    try {
-                        UtilReturnType.validateMethodAnnotations(method); 
-                    } catch (BuildException e) {
-                        throw new BuildException("Erreur dans le contrôleur " + controllerClass.getName() + ": " + e.getMessage());
+                if (method.isAnnotationPresent(URL.class)) {
+                    String url = method.getAnnotation(URL.class).value();
+                    Mapping mapping = urlMapping.computeIfAbsent(url, k -> new Mapping(controllerClass.getName()));
+    
+                    if (method.isAnnotationPresent(Annotation_Get.class)) {
+                        mapping.addVerbAction("GET", method.getName());
+                    } else if (method.isAnnotationPresent(Annotation_Post.class)) {
+                        mapping.addVerbAction("POST", method.getName());
+                    } else if (method.isAnnotationPresent(RequestMapping.class)) {
+                        RequestMapping rm = method.getAnnotation(RequestMapping.class);
+                        String httpMethod = rm.method();
+                        String mappingUrl = rm.value();
+                        
+                        if (!mappingUrl.isEmpty()) {
+                            url = mappingUrl;
+                            mapping = urlMapping.computeIfAbsent(url, k -> new Mapping(controllerClass.getName()));
+                        }
+                        
+                        mapping.addVerbAction(httpMethod, method.getName());
+                    } else {
+                        mapping.addVerbAction("GET", method.getName());
                     }
-                    urlMapping.put(url, new Mapping(controllerClass.getName(), method.getName()));
+    
+                    UtilReturnType.validateReturnType(method, controllerClass);
+                    UtilReturnType.validateMethodAnnotations(method);
                 }
-            }   
+            }
         }
     }
 
@@ -83,49 +101,57 @@ public class FrontController extends HttpServlet {
     }
 
     private String extractUrl(String fullUrl) {
-        String contextPath = "/"+nameProject;
+        String contextPath = "/" + nameProject;
         if (fullUrl.startsWith(contextPath)) {
             return fullUrl.substring(contextPath.length());
         }
-
         System.out.println("full url: " + fullUrl);
         return fullUrl;
     }
+
     protected void processRequest(HttpServletRequest request, HttpServletResponse response)
             throws ServletException, IOException {
         try {
             PrintWriter out = response.getWriter();
             String url = extractUrl(request.getRequestURI());
+            String httpMethod = request.getMethod();
+            
             Mapping mapping = urlMapping.get(url);
             if (mapping == null) {
                 throw new RequestException("URL non trouvée : " + url);
             }
-            Object result = invokeControllerMethod(request, mapping);
-            UtilController.handleControllerResult(result, request, response, out,mapping);
-            } catch (BuildException e) {
-                handleException(response, HttpServletResponse.SC_BAD_REQUEST, e);
-            } catch (RequestException e) {
-                handleException(response, HttpServletResponse.SC_NOT_FOUND, e);
-            } catch (Exception e) {
-                handleException(response, HttpServletResponse.SC_INTERNAL_SERVER_ERROR, e);
+            
+            String methodName = mapping.getMethodName(httpMethod);
+            if (methodName == null && httpMethod.equals("GET")) {
+                methodName = mapping.getMethodName("DEFAULT");
             }
+            if (methodName == null) {
+                throw new RequestException("Méthode HTTP non autorisée pour cette URL");
+            }
+            
+            Object result = invokeControllerMethod(request, mapping, httpMethod);
+            UtilController.handleControllerResult(result, request, response, out, mapping, httpMethod);
+            
+        } catch (Exception e) {
+            handleException(response, HttpServletResponse.SC_INTERNAL_SERVER_ERROR, e);
+        }
     }
-    
-    private Object invokeControllerMethod(HttpServletRequest request, Mapping mapping) throws Exception {
+ 
+    private Object invokeControllerMethod(HttpServletRequest request, Mapping mapping, String httpMethod) throws Exception {
         Class<?> controllerClass = Class.forName(mapping.getClassName());
         Object controllerInstance = controllerClass.getDeclaredConstructor().newInstance();
     
-        // Instancier les attributs Session
         for (Field field : controllerClass.getDeclaredFields()) {
             if (field.getType().equals(Session.class)) {
                 field.setAccessible(true);
                 field.set(controllerInstance, new Session(request.getSession()));
             }
         }
-        Method method = UtilController.getControllerMethod(mapping, controllerClass);
+        Method method = UtilController.getControllerMethod(mapping, controllerClass, httpMethod);
         Object[] params = UtilParameter.getMethodParameters(request, method);
         return method.invoke(controllerInstance, params);
     }
+
     private void handleException(HttpServletResponse response, int statusCode, Exception e) throws IOException {
         e.printStackTrace();
         response.sendError(statusCode, e.getMessage());

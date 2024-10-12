@@ -4,8 +4,9 @@ import utils.*;
 import exception.*;
 import annotation.*;
 import map.*;
-import javax.servlet.ServletException;
+import verb.VerbAction;
 
+import javax.servlet.ServletException;
 import com.google.gson.Gson;
 
 import java.io.IOException;
@@ -25,37 +26,40 @@ public class UtilController {
         }
     }
 
-    public static Method getControllerMethodByMapping(Mapping mapping) throws Exception {
+    public static Method getControllerMethodByMapping(Mapping mapping, String httpMethod) throws Exception {
         Class<?> controllerClass = Class.forName(mapping.getClassName());
-        return controllerClass.getMethod(mapping.getMethodName());
+        String methodName = mapping.getMethodName(httpMethod);
+        if (methodName == null) {
+            throw new NoSuchMethodException("Aucune méthode trouvée pour la méthode HTTP : " + httpMethod);
+        }
+        return controllerClass.getMethod(methodName);
     }
 
     public static void forwardToView(ModelView modelView, HttpServletRequest request, HttpServletResponse response)
             throws ServletException, IOException {
-            String viewUrl = modelView.getUrl();
-            HashMap<String, Object> data = modelView.getData();
+        String viewUrl = modelView.getUrl();
+        HashMap<String, Object> data = modelView.getData();
 
-            for (String key : data.keySet()) {
-                request.setAttribute(key, data.get(key));
-            }
-            RequestDispatcher dispatcher = request.getRequestDispatcher(viewUrl);
-            dispatcher.forward(request, response);
+        for (String key : data.keySet()) {
+            request.setAttribute(key, data.get(key));
+        }
+        RequestDispatcher dispatcher = request.getRequestDispatcher(viewUrl);
+        dispatcher.forward(request, response);
     }
-    public static void handleControllerResult(Object result, HttpServletRequest request, HttpServletResponse response, PrintWriter out,Mapping mapping)
-    throws Exception, ServletException, RequestException {
+
+    public static void handleControllerResult(Object result, HttpServletRequest request, HttpServletResponse response, PrintWriter out, Mapping mapping, String httpMethod)
+            throws Exception, ServletException, RequestException {
         
-        Method method = UtilController.getControllerMethodByMapping(mapping); // Ajoute une méthode pour récupérer la méthode correspondante.
+        Method method = UtilController.getControllerMethodByMapping(mapping, httpMethod);
         boolean isRestApi = method.isAnnotationPresent(Restapi.class);
         
         if (isRestApi) {
             response.setContentType("application/json");
             if (result instanceof ModelView) {
-                // Si c'est un ModelView, on transforme la "data" en JSON.
                 ModelView modelView = (ModelView) result;
                 String jsonData = new Gson().toJson(modelView.getData());
                 out.print(jsonData);
             } else {
-                // Sinon, on transforme directement le résultat en JSON.
                 String jsonResult = new Gson().toJson(result);
                 out.print(jsonResult);
             }
@@ -69,14 +73,12 @@ public class UtilController {
             }
         }  
     }
-    public static Method getControllerMethod(Mapping mapping, Class<?> controllerClass) throws NoSuchMethodException {
-        for (Method method : controllerClass.getMethods()) {
-            if (method.getName().equals(mapping.getMethodName())) {
-                return method;
-            }
-        }
-        throw new NoSuchMethodException("Méthode  " + mapping.getMethodName() + " non trouvée dans " + controllerClass.getName());
-    }
-    
-}
 
+    public static Method getControllerMethod(Mapping mapping, Class<?> controllerClass, String httpMethod) throws NoSuchMethodException {
+        String methodName = mapping.getMethodName(httpMethod);
+        if (methodName == null) {
+            throw new NoSuchMethodException("No method found for HTTP method: " + httpMethod);
+        }
+        return controllerClass.getMethod(methodName);
+    }
+}
