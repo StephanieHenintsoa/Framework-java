@@ -126,7 +126,8 @@ public class FrontController extends HttpServlet {
                 methodName = mapping.getMethodName("DEFAULT");
             }
             if (methodName == null) {
-                throw new RequestException("Méthode HTTP non autorisée pour cette URL");
+                out.println("<h1>Méthode HTTP non autorisée pour cette URL:"+url+"ayant comme Verb : "+httpMethod+"</h1>");
+                return;
             }
             
             Object result = invokeControllerMethod(request, mapping, httpMethod);
