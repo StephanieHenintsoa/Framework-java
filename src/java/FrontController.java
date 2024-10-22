@@ -25,13 +25,20 @@ import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
 import javax.servlet.RequestDispatcher;
 import javax.servlet.ServletContext;
+import javax.servlet.annotation.MultipartConfig;
 
+@MultipartConfig(
+    fileSizeThreshold = 1024 * 1024, // 1 MB
+    maxFileSize = 1024 * 1024 * 10,  // 10 MB
+    maxRequestSize = 1024 * 1024 * 15 // 15 MB
+)
 public class FrontController extends HttpServlet {
     private String namePackage;
     private String nameProject;
     private ControllerScanner scanner;
     private List<Class<?>> controllers;
     private HashMap<String, Mapping> urlMapping = new HashMap<>();
+    private String uploadDirectory;
 
     @Override
     public void init(ServletConfig configurer) throws ServletException {
@@ -41,6 +48,16 @@ public class FrontController extends HttpServlet {
 
             namePackage = context.getInitParameter("package-controller");
             nameProject = context.getInitParameter("name-project");
+            uploadDirectory = context.getInitParameter("upload-directory");
+
+            if (uploadDirectory == null) {
+                uploadDirectory = context.getRealPath("/WEB-INF/uploads");
+            }
+
+            java.io.File uploadDir = new java.io.File(uploadDirectory);
+            if (!uploadDir.exists()) {
+                uploadDir.mkdirs();
+            }
 
             UtilPackage.validatePackage(namePackage);
             
@@ -97,6 +114,10 @@ public class FrontController extends HttpServlet {
     @Override
     protected void doPost(HttpServletRequest request, HttpServletResponse response)
             throws ServletException, IOException {
+        String contentType = request.getContentType();
+        if (contentType != null && contentType.startsWith("multipart/form-data")) {
+            request.setAttribute("uploadDirectory", uploadDirectory);
+        }
         processRequest(request, response);
     }
 
@@ -105,7 +126,6 @@ public class FrontController extends HttpServlet {
         if (fullUrl.startsWith(contextPath)) {
             return fullUrl.substring(contextPath.length());
         }
-        System.out.println("full url: " + fullUrl);
         return fullUrl;
     }
 
@@ -156,5 +176,9 @@ public class FrontController extends HttpServlet {
     private void handleException(HttpServletResponse response, int statusCode, Exception e) throws IOException {
         e.printStackTrace();
         response.sendError(statusCode, e.getMessage());
+    }
+
+    public String getUploadDirectory() {
+        return uploadDirectory;
     }
 }
