@@ -6,6 +6,7 @@ import utils.*;
 import util.*;
 import annotation.*;
 import verb.VerbAction;
+import validation.*;
 
 import com.google.gson.Gson;
 
@@ -15,8 +16,10 @@ import java.lang.reflect.Method;
 import java.sql.Date;
 import java.lang.annotation.Annotation;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.lang.reflect.Field;
 import javax.servlet.ServletException;
 import javax.servlet.ServletConfig;
@@ -26,6 +29,8 @@ import javax.servlet.http.HttpServletResponse;
 import javax.servlet.RequestDispatcher;
 import javax.servlet.ServletContext;
 import javax.servlet.annotation.MultipartConfig;
+import javax.servlet.http.HttpServletResponse;
+
 
 @MultipartConfig(
     fileSizeThreshold = 1024 * 1024, // 1 MB
@@ -115,28 +120,45 @@ public class FrontController extends HttpServlet {
     protected void doPost(HttpServletRequest request, HttpServletResponse response)
             throws ServletException, IOException {
         String contentType = request.getContentType();
+        System.out.println("contenuuu====>"+contentType);
+        
         if (contentType != null && contentType.startsWith("multipart/form-data")) {
+            System.out.println("contenuuu====>"+uploadDirectory);
             request.setAttribute("uploadDirectory", uploadDirectory);
         }
         processRequest(request, response);
     }
-
+    
     private String extractUrl(String fullUrl) {
-        String contextPath = "/" + nameProject;
-        if (fullUrl.startsWith(contextPath)) {
-            return fullUrl.substring(contextPath.length());
+        if (fullUrl == null || fullUrl.isEmpty()) {
+            return "";
         }
-        return fullUrl;
-    }
+    
+        int lastSlashIndex = fullUrl.lastIndexOf("/");
+        if (lastSlashIndex == -1 || lastSlashIndex == fullUrl.length() - 1) {
+            return ""; 
+        }
+        
+        System.out.println("extract: " + fullUrl.substring(lastSlashIndex + 1));
+        return fullUrl.substring(lastSlashIndex + 1);
+    }      
 
     protected void processRequest(HttpServletRequest request, HttpServletResponse response)
             throws ServletException, IOException {
         try {
             PrintWriter out = response.getWriter();
-            String url = extractUrl(request.getRequestURI());
+            System.out.println("##### context path: " + request.getContextPath());
+            System.out.println("####### GET URI: " + request.getRequestURI());
+            String url = request.getContextPath() + "/" + extractUrl(request.getRequestURI());
+            System.out.println("URL====>"+url);
             String httpMethod = request.getMethod();
+            System.out.println("methodd===>"+httpMethod);
             
             Mapping mapping = urlMapping.get(url);
+            System.out.println("url fenooooo");
+            System.out.println("urlMapping===>"+urlMapping);
+            System.out.println("URL====>"+url);
+            System.out.println("mappping==>"+mapping);
             if (mapping == null) {
                 throw new RequestException("URL non trouvée : " + url);
             }
@@ -146,33 +168,64 @@ public class FrontController extends HttpServlet {
                 methodName = mapping.getMethodName("DEFAULT");
             }
             if (methodName == null) {
-                out.println("<h1>Méthode HTTP non autorisée pour cette URL:"+url+"ayant comme Verb : "+httpMethod+"</h1>");
+                out.println("<h1>Méthode HTTP non autorisée pour cette URL ===>:"+url+"ayant comme Verb =: "+httpMethod+"</h1>");
                 return;
             }
             
-            Object result = invokeControllerMethod(request, mapping, httpMethod);
+            Object result = invokeControllerMethod(request, response, mapping, httpMethod);
+
             UtilController.handleControllerResult(result, request, response, out, mapping, httpMethod);
             
         } catch (Exception e) {
             handleException(response, HttpServletResponse.SC_INTERNAL_SERVER_ERROR, e);
         }
     }
- 
-    private Object invokeControllerMethod(HttpServletRequest request, Mapping mapping, String httpMethod) throws Exception {
-        Class<?> controllerClass = Class.forName(mapping.getClassName());
-        Object controllerInstance = controllerClass.getDeclaredConstructor().newInstance();
-    
-        for (Field field : controllerClass.getDeclaredFields()) {
-            if (field.getType().equals(Session.class)) {
-                field.setAccessible(true);
-                field.set(controllerInstance, new Session(request.getSession()));
-            }
+    private Object invokeControllerMethod(HttpServletRequest request, HttpServletResponse response, Mapping mapping, String httpMethod) throws Exception {
+        if (request.getAttribute("validationInProgress") != null) {
+            return null;
         }
-        Method method = UtilController.getControllerMethod(mapping, controllerClass, httpMethod);
-        Object[] params = UtilParameter.getMethodParameters(request, method);
-        return method.invoke(controllerInstance, params);
+        
+        try {
+            Class controllerClass = Class.forName(mapping.getClassName());
+            Object controllerInstance = UtilController.createInstance(mapping.getClassName());
+            Method method = UtilController.getControllerMethod(mapping, controllerClass, httpMethod);
+            Object[] params = UtilParameter.getMethodParameters(request, method);
+            
+            for (int i = 0; i < method.getParameters().length; i++) {
+                if (method.getParameters()[i].isAnnotationPresent(ModelAttribute.class) && params[i] != null) {
+                    System.out.println("Param " + i + ": " + params[i]);
+                    ValidationErrors errors = Validator.validate(params[i]);
+                    
+                    if (errors.hasErrors()) {
+                        Map<String, List<String>> fieldErrors = errors.getAllErrors();
+                        for (Map.Entry<String, List<String>> entry : fieldErrors.entrySet()) {
+                            String fieldName = entry.getKey();
+                            List<String> errorMessages = entry.getValue();
+                            request.setAttribute("error_" + fieldName, errorMessages);
+                        }
+                        
+                        request.setAttribute("validationInProgress", true);
+                        request.setAttribute("validationErrors", errors);
+                        request.setAttribute("formData", params[i]);
+                        
+                        System.err.println("Validation Errors:");
+                        errors.getAllErrors().forEach((field, messages) -> {
+                            System.err.println("Field: " + field + ", Errors: " + messages);
+                        });
+                        
+                        request.getRequestDispatcher("user/formulaire.jsp").forward(request, response);
+                        return null;
+                    }
+                }
+            }
+            return method.invoke(controllerInstance, params);
+            
+        } catch (Exception e) {
+            System.err.println("An error occurred during method invocation:");
+            e.printStackTrace();
+            throw e;
+        }
     }
-
     private void handleException(HttpServletResponse response, int statusCode, Exception e) throws IOException {
         e.printStackTrace();
         response.sendError(statusCode, e.getMessage());
