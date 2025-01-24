@@ -18,9 +18,15 @@ public class UtilParameter {
         for (java.lang.reflect.Field field : paramType.getDeclaredFields()) {
             String fieldName = field.getName();
             String fieldValue = request.getParameter(fieldName);
-            field.setAccessible(true);
-            field.set(modelAttributeInstance, UtilParameter.convertParameter(fieldValue, field.getType()));
+
+            Object param = UtilParameter.convertParameter(fieldValue, field.getType());
+
+            if (param != null) {
+                field.setAccessible(true);
+                field.set(modelAttributeInstance, param);
+            }
         }
+
         return modelAttributeInstance;
     }
     
@@ -45,7 +51,6 @@ public class UtilParameter {
         if (paramType.equals(FileUpload.class)) {
             String paramName = "file";
             
-            // Chercher si un nom spécifique est défini via @RequestParam
             for (Annotation annotation : annotations) {
                 if (annotation instanceof RequestParam) {
                     paramName = ((RequestParam) annotation).name();
@@ -56,7 +61,6 @@ public class UtilParameter {
             return FileUtils.processUploadedFile(request, paramName);
         }
         
-        // Traitement des autres types de paramètres
         for (Annotation annotation : annotations) {
             if (annotation instanceof RequestParam) {
                 String paramName = ((RequestParam) annotation).name();
@@ -68,7 +72,6 @@ public class UtilParameter {
             }
         }
         
-        // Vérification pour le type Session
         if (paramType.equals(Session.class)) {
             System.out.println("Session");
             return new Session(request.getSession());
@@ -94,7 +97,9 @@ public class UtilParameter {
             return null;
 
         } catch (Exception e) {
-            throw new RequestException("Le type de données insérées n'est pas compatible");
+            e.printStackTrace();
+            return null;
+          
         }
     }
 }

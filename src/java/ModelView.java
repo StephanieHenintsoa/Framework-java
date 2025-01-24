@@ -1,15 +1,17 @@
 package utils;
-
+import validation.*;
 import java.util.HashMap;
 import java.util.Map;
 
 public class ModelView {
     private String url;
     private HashMap<String, Object> data;
+    private ValidationErrors validationErrors;
 
     public ModelView() {
         this.url = "";
         this.data = new HashMap<>();
+        this.validationErrors = new ValidationErrors();
     }
 
     public ModelView(String url, HashMap<String, Object> data) {
@@ -55,6 +57,18 @@ public class ModelView {
 
     public int dataSize() {
         return this.data.size();
+    }
+   
+    public void setValidationErrors(ValidationErrors validationErrors) {
+        this.validationErrors = validationErrors;
+    }
+
+    public ValidationErrors getValidationErrors() {
+        return validationErrors;
+    }
+
+    public boolean hasErrors() {
+        return validationErrors != null && validationErrors.hasErrors();
     }
 
     @Override
