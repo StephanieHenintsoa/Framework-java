@@ -7,6 +7,7 @@ import util.*;
 import annotation.*;
 import verb.VerbAction;
 import validation.*;
+import guard.*;
 
 import com.google.gson.Gson;
 
@@ -76,7 +77,7 @@ public class FrontController extends HttpServlet {
             e.printStackTrace();
         }
     }
-
+    
     private void mapControllers() throws Exception {
         for (Class<?> controllerClass : controllers) {
             for (Method method : controllerClass.getDeclaredMethods()) {
@@ -180,16 +181,34 @@ public class FrontController extends HttpServlet {
             handleException(response, HttpServletResponse.SC_INTERNAL_SERVER_ERROR, e);
         }
     }
+    
     private Object invokeControllerMethod(HttpServletRequest request, HttpServletResponse response, Mapping mapping, String httpMethod) throws Exception {
         if (request.getAttribute("validationInProgress") != null) {
             return null;
         }
         
         try {
-            Class controllerClass = Class.forName(mapping.getClassName());
+            Class<?> controllerClass = Class.forName(mapping.getClassName());
             Object controllerInstance = UtilController.createInstance(mapping.getClassName());
             Method method = UtilController.getControllerMethod(mapping, controllerClass, httpMethod);
-            Object[] params = UtilParameter.getMethodParameters(request, method);
+            
+            // Vérification de l'authentification
+            if (!AuthGuard.checkAuthentication(request, response, controllerClass, method)) {
+                return null;
+            }
+            
+            // Détection si la requête est un upload de fichier
+            String contentType = request.getContentType();
+            boolean isMultipart = contentType != null && contentType.startsWith("multipart/form-data");
+            Object[] params;
+            
+            if (isMultipart) {
+                // Pour les uploads de fichiers
+                params = UtilParameter.getMethodParameter(request, method);
+            } else {
+                // Pour les autres types de requêtes
+                params = UtilParameter.getMethodParameters(request, response, method);
+            }
             
             for (int i = 0; i < method.getParameters().length; i++) {
                 if (method.getParameters()[i].isAnnotationPresent(ModelAttribute.class) && params[i] != null) {
@@ -218,6 +237,7 @@ public class FrontController extends HttpServlet {
                     }
                 }
             }
+            
             return method.invoke(controllerInstance, params);
             
         } catch (Exception e) {
