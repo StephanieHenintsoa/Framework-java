@@ -6,10 +6,12 @@ import exception.*;
 import file.*;
 import java.lang.annotation.Annotation;
 import java.lang.reflect.Method;
+import java.lang.reflect.Parameter;
 import java.sql.Date;
 import java.util.ArrayList;
 
 import javax.servlet.http.HttpServletRequest;
+import javax.servlet.http.HttpServletResponse;
 
 public class UtilParameter {
     
@@ -30,7 +32,7 @@ public class UtilParameter {
         return modelAttributeInstance;
     }
     
-    public static Object[] getMethodParameters(HttpServletRequest request, Method method) throws Exception {
+    public static Object[] getMethodParameter(HttpServletRequest request, Method method) throws Exception {
         Object[] params = new Object[method.getParameterCount()];
         Annotation[][] paramAnnotations = method.getParameterAnnotations();
 
@@ -42,6 +44,31 @@ public class UtilParameter {
             params[i] = getParameter(request, paramAnnotations[i], paramTypes[i]);
         }
         return params;
+    }
+    
+    public static Object[] getMethodParameters(HttpServletRequest request, HttpServletResponse response, Method method) throws Exception {
+        Parameter[] parameters = method.getParameters();
+        Object[] args = new Object[parameters.length];
+        
+        for (int i = 0; i < parameters.length; i++) {
+            Class<?> type = parameters[i].getType();
+            
+            if (type.equals(HttpServletRequest.class)) {
+                args[i] = request;
+            } else if (type.equals(HttpServletResponse.class)) {
+                args[i] = response;
+            } else if (parameters[i].isAnnotationPresent(RequestParam.class)) {
+                // Récupération de la valeur d'un paramètre annoté avec @RequestParam
+                RequestParam rp = parameters[i].getAnnotation(RequestParam.class);
+                String paramName = rp.name();
+                String value = request.getParameter(paramName);
+                args[i] = value; // Vous pouvez ajouter une conversion de type ici si nécessaire
+            } else {
+                // Pour les autres types de paramètres, vous pouvez ajouter d'autres cas ou laisser null
+                args[i] = null;
+            }
+        }
+        return args;
     }
 
     public static Object getParameter(HttpServletRequest request, Annotation[] annotations, Class<?> paramType) 
